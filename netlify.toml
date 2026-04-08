@@ -1,0 +1,15 @@
+# Netlify Configuration
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[headers]
+  [[headers."/*"]]
+    key = "Cache-Control"
+    value = "max-age=3600"
