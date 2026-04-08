@@ -1,0 +1,1 @@
+version: '3.8'\n\nservices:\n  app:\n    image: your-app-image\n    build:\n      context: .\n      dockerfile: Dockerfile\n    ports:\n      - '3000:3000'\n    environment:\n      - NODE_ENV=development\n    volumes:\n      - .:/app\n      - /app/node_modules\n
