@@ -1,0 +1,22 @@
+# Ignore the .env file
+.env
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore log files
+*.log
+
+# Ignore compiled files
+*.o
+*.so
+
+# Ignore temporary files
+*.tmp
+*.temp
+
+# Ignore Dockerfile if it exists in the context
+Dockerfile
+
+# Ignore other unnecessary files
+*.md
