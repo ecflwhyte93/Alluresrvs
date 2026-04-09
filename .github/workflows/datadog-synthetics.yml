@@ -34,5 +34,5 @@ jobs:
         api_key: ${{secrets.DD_API_KEY}}
         app_key: ${{secrets.DD_APP_KEY}}
         test_search_query: 'tag:e2e-tests' #Modify this tag to suit your tagging strategy
-
+pk_live_51TJrHyE1rUyyqG9sr0I5svdAds3d6APwfhNZbzwoltP8ehbQZi9gc9ltPuGaLFLc960vwN054EI4XgXFe2cc2aiY00vBivnRcHsk_live_51TJrHyE1rUyyqG9s76Zf4RDWz9nU18oaFltVYBDlf3Pty0FNIoWWN9LmSpFAB5baqgDKsw3GFXbwdc4yjchWuPES00768sdxgq
 
