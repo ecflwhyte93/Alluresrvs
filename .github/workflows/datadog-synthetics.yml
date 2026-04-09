@@ -191,5 +191,5 @@ app.listen(PORT, () => {
 }
         npm install
 npm start  
-          
+        const MONGO_URI = "your-atlas-uri"  
         
