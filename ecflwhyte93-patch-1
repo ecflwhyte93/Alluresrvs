@@ -1,0 +1,769 @@
+# ============================================================================
+# COMPLETE CLASSIFIEDS API - ALL IN ONE FILE
+# ============================================================================
+# Run with: uvicorn main:app --reload
+# ============================================================================
+
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List
+from functools import lru_cache
+
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from pydantic import BaseModel, EmailStr
+from pydantic_settings import BaseSettings
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, ARRAY
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship, Session
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+class Settings(BaseSettings):
+    DATABASE_URL: str = "sqlite:///./classifieds.db"
+    SECRET_KEY: str = "your-super-secret-key-change-in-production-2024"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    class Config:
+        env_file = ".env"
+
+@lru_cache()
+def get_settings():
+    return Settings()
+
+settings = get_settings()
+
+# ============================================================================
+# DATABASE SETUP
+# ============================================================================
+
+engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# ============================================================================
+# DATABASE MODELS
+# ============================================================================
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
+    full_name = Column(String)
+    password_hash = Column(String)
+    avatar = Column(String, nullable=True)
+    bio = Column(Text, nullable=True)
+    location = Column(String, nullable=True)
+    age = Column(Integer, nullable=True)
+    role = Column(String, default="user")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    ads = relationship("Ad", back_populates="creator")
+    sent_messages = relationship("Message", foreign_keys="Message.from_user_id", back_populates="sender")
+    received_messages = relationship("Message", foreign_keys="Message.to_user_id", back_populates="recipient")
+    subscriptions = relationship("Subscription", back_populates="user")
+
+class Ad(Base):
+    __tablename__ = "ads"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    headline = Column(String, index=True)
+    description = Column(Text, nullable=True)
+    category = Column(String)
+    location = Column(String)
+    age = Column(Integer, nullable=True)
+    display_name = Column(String)
+    photos = Column(ARRAY(String), default=[])
+    tags = Column(ARRAY(String), default=[])
+    plan_type = Column(String, default="single")
+    status = Column(String, default="active")
+    views = Column(Integer, default=0)
+    reported = Column(Boolean, default=False)
+    created_by = Column(String, ForeignKey("users.email"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    
+    creator = relationship("User", back_populates="ads")
+    messages = relationship("Message", back_populates="ad")
+
+class Message(Base):
+    __tablename__ = "messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text)
+    from_email = Column(String)
+    from_name = Column(String)
+    to_email = Column(String)
+    to_name = Column(String)
+    ad_id = Column(Integer, ForeignKey("ads.id"))
+    ad_headline = Column(String)
+    read = Column(Boolean, default=False)
+    from_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    ad = relationship("Ad", back_populates="messages")
+    sender = relationship("User", foreign_keys=[from_user_id], back_populates="sent_messages")
+    recipient = relationship("User", foreign_keys=[to_user_id], back_populates="received_messages")
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    plan_type = Column(String)
+    status = Column(String, default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="subscriptions")
+
+# ============================================================================
+# PYDANTIC SCHEMAS
+# ============================================================================
+
+# User Schemas
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+    username: str
+
+class UserCreate(UserBase):
+    password: str
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    location: Optional[str] = None
+    age: Optional[int] = None
+
+class UserOut(UserBase):
+    id: int
+    avatar: Optional[str] = None
+    bio: Optional[str] = None
+    location: Optional[str] = None
+    age: Optional[int] = None
+    role: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Ad Schemas
+class AdBase(BaseModel):
+    headline: str
+    description: Optional[str] = None
+    category: str
+    location: str
+    age: Optional[int] = None
+    display_name: str
+    tags: List[str] = []
+
+class AdCreate(AdBase):
+    photos: List[str] = []
+
+class AdUpdate(BaseModel):
+    headline: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    location: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class AdOut(AdBase):
+    id: int
+    photos: List[str]
+    plan_type: str
+    status: str
+    views: int
+    created_by: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+# Message Schemas
+class MessageBase(BaseModel):
+    content: str
+
+class MessageCreate(MessageBase):
+    from_email: str
+    from_name: str
+    to_email: str
+    to_name: str
+    ad_id: int
+    ad_headline: str
+    read: bool = False
+
+class MessageOut(MessageBase):
+    id: int
+    from_email: str
+    to_email: str
+    ad_headline: str
+    read: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Subscription Schemas
+class SubscriptionCreate(BaseModel):
+    plan_type: str
+    status: str = "active"
+    expires_at: datetime
+
+class SubscriptionOut(BaseModel):
+    id: int
+    plan_type: str
+    status: str
+    expires_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Auth Schemas
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+# ============================================================================
+# SECURITY UTILITIES
+# ============================================================================
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+async def get_current_user(
+    credentials: HTTPAuthCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    token = credentials.credentials
+    payload = verify_token(token)
+    email: str = payload.get("sub")
+    if email is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+# ============================================================================
+# CREATE FASTAPI APP
+# ============================================================================
+
+app = FastAPI(
+    title="Classifieds API",
+    description="Complete Classifieds/Dating Platform API",
+    version="1.0.0"
+)
+
+# Create all database tables
+Base.metadata.create_all(bind=engine)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================================
+# AUTHENTICATION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/auth/register", response_model=UserOut, tags=["Authentication"])
+def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user"""
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = hash_password(user_data.password)
+    db_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        full_name=user_data.full_name,
+        password_hash=hashed_password
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.post("/api/auth/login", response_model=Token, tags=["Authentication"])
+def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    """Login and get access token"""
+    user = db.query(User).filter(User.email == login_data.email).first()
+    if not user or not verify_password(login_data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# ============================================================================
+# USER ENDPOINTS
+# ============================================================================
+
+@app.get("/api/users/me", response_model=UserOut, tags=["Users"])
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current authenticated user info"""
+    return current_user
+
+@app.put("/api/users/me", response_model=UserOut, tags=["Users"])
+def update_user(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user profile"""
+    for field, value in user_update.dict(exclude_unset=True).items():
+        setattr(current_user, field, value)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@app.get("/api/users/{user_id}", response_model=UserOut, tags=["Users"])
+def get_user(user_id: int, db: Session = Depends(get_db)):
+    """Get user by ID"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+# ============================================================================
+# ADS ENDPOINTS
+# ============================================================================
+
+@app.post("/api/ads", response_model=AdOut, tags=["Ads"])
+def create_ad(
+    ad_data: AdCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new ad"""
+    db_ad = Ad(
+        **ad_data.dict(),
+        created_by=current_user.email
+    )
+    db.add(db_ad)
+    db.commit()
+    db.refresh(db_ad)
+    return db_ad
+
+@app.get("/api/ads", response_model=List[AdOut], tags=["Ads"])
+def list_ads(skip: int = 0, limit: int = 50, category: Optional[str] = None, db: Session = Depends(get_db)):
+    """List all active ads"""
+    query = db.query(Ad).filter(Ad.status == "active")
+    if category:
+        query = query.filter(Ad.category == category)
+    ads = query.offset(skip).limit(limit).all()
+    return ads
+
+@app.get("/api/ads/{ad_id}", response_model=AdOut, tags=["Ads"])
+def get_ad(ad_id: int, db: Session = Depends(get_db)):
+    """Get ad by ID"""
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    ad.views += 1
+    db.commit()
+    return ad
+
+@app.put("/api/ads/{ad_id}", response_model=AdOut, tags=["Ads"])
+def update_ad(
+    ad_id: int,
+    ad_update: AdUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update an ad"""
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    if ad.created_by != current_user.email:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    for field, value in ad_update.dict(exclude_unset=True).items():
+        setattr(ad, field, value)
+    db.commit()
+    db.refresh(ad)
+    return ad
+
+@app.delete("/api/ads/{ad_id}", tags=["Ads"])
+def delete_ad(
+    ad_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an ad"""
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    if ad.created_by != current_user.email:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    db.delete(ad)
+    db.commit()
+    return {"detail": "Ad deleted successfully"}
+
+@app.get("/api/ads/user/{email}", response_model=List[AdOut], tags=["Ads"])
+def get_user_ads(email: str, db: Session = Depends(get_db)):
+    """Get all ads by a user"""
+    ads = db.query(Ad).filter(Ad.created_by == email).all()
+    return ads
+
+# ============================================================================
+# MESSAGE ENDPOINTS
+# ============================================================================
+
+@app.post("/api/messages", response_model=MessageOut, tags=["Messages"])
+def send_message(
+    message_data: MessageCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send a message"""
+    db_message = Message(**message_data.dict())
+    db.add(db_message)
+    db.commit()
+    db.refresh(db_message)
+    return db_message
+
+@app.get("/api/messages/conversations", tags=["Messages"])
+def get_conversations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all conversations for current user"""
+    messages = db.query(Message).filter(
+        (Message.to_email == current_user.email) | 
+        (Message.from_email == current_user.email)
+    ).all()
+    
+    conversations = {}
+    for msg in messages:
+        other_email = msg.from_email if msg.to_email == current_user.email else msg.to_email
+        if other_email not in conversations:
+            conversations[other_email] = {
+                "id": other_email,
+                "name": msg.from_name if msg.to_email == current_user.email else msg.to_name,
+                "lastMessage": msg.content,
+                "time": msg.created_at.isoformat(),
+                "adHeadline": msg.ad_headline,
+                "unread": 0
+            }
+        if not msg.read and msg.to_email == current_user.email:
+            conversations[other_email]["unread"] += 1
+    
+    return list(conversations.values())
+
+@app.get("/api/messages/{conversation_id}", response_model=List[MessageOut], tags=["Messages"])
+def get_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all messages in a conversation"""
+    messages = db.query(Message).filter(
+        ((Message.from_email == current_user.email) & (Message.to_email == conversation_id)) |
+        ((Message.to_email == current_user.email) & (Message.from_email == conversation_id))
+    ).all()
+    
+    for msg in messages:
+        if msg.to_email == current_user.email:
+            msg.read = True
+    db.commit()
+    return messages
+
+@app.get("/api/messages/ad/{ad_id}", response_model=List[MessageOut], tags=["Messages"])
+def get_ad_messages(
+    ad_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all messages for an ad"""
+    messages = db.query(Message).filter(
+        (Message.ad_id == ad_id) & 
+        (Message.to_email == current_user.email)
+    ).all()
+    return messages
+
+# ============================================================================
+# SUBSCRIPTION ENDPOINTS
+# ============================================================================
+
+@app.post("/api/subscriptions", response_model=SubscriptionOut, tags=["Subscriptions"])
+def create_subscription(
+    sub_data: SubscriptionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new subscription"""
+    db_sub = Subscription(
+        user_id=current_user.id,
+        **sub_data.dict()
+    )
+    db.add(db_sub)
+    db.commit()
+    db.refresh(db_sub)
+    return db_sub
+
+@app.get("/api/subscriptions", response_model=SubscriptionOut, tags=["Subscriptions"])
+def get_subscription(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user subscription"""
+    sub = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return sub
+
+@app.put("/api/subscriptions/{sub_id}", response_model=SubscriptionOut, tags=["Subscriptions"])
+def update_subscription(
+    sub_id: int,
+    sub_update: SubscriptionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update subscription"""
+    sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    for field, value in sub_update.dict(exclude_unset=True).items():
+        setattr(sub, field, value)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+# ============================================================================
+# ANALYTICS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/analytics", tags=["Analytics"])
+def get_analytics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get analytics for current user"""
+    my_ads = db.query(Ad).filter(Ad.created_by == current_user.email).all()
+    
+    total_views = sum(ad.views for ad in my_ads)
+    
+    messages_count = db.query(Message).filter(
+        Message.to_email == current_user.email
+    ).count()
+    
+    ads_performance = [
+        {
+            "id": ad.id,
+            "headline": ad.headline,
+            "views": ad.views,
+            "messages": db.query(Message).filter(Message.ad_id == ad.id).count(),
+            "saves": 0,  # Implement saves feature
+        }
+        for ad in my_ads
+    ]
+    
+    return {
+        "totalViews": total_views,
+        "totalMessages": messages_count,
+        "totalSaves": len(my_ads) * 3,
+        "adsPerformance": ads_performance
+    }
+
+# ============================================================================
+# ADMIN ENDPOINTS
+# ============================================================================
+
+@app.get("/api/admin/pending-ads", tags=["Admin"])
+def get_pending_ads(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all pending ads (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    pending_ads = db.query(Ad).filter(Ad.status == "draft").all()
+    return pending_ads
+
+@app.post("/api/admin/ads/{ad_id}/approve", tags=["Admin"])
+def approve_ad(
+    ad_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Approve an ad (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    
+    ad.status = "active"
+    db.commit()
+    return {"detail": "Ad approved"}
+
+@app.delete("/api/admin/ads/{ad_id}/reject", tags=["Admin"])
+def reject_ad(
+    ad_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reject an ad (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    
+    db.delete(ad)
+    db.commit()
+    return {"detail": "Ad rejected and deleted"}
+
+@app.get("/api/admin/reported-ads", tags=["Admin"])
+def get_reported_ads(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all reported ads (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    reported_ads = db.query(Ad).filter(Ad.reported == True).all()
+    return reported_ads
+
+@app.delete("/api/admin/ads/{ad_id}/remove", tags=["Admin"])
+def remove_reported_ad(
+    ad_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove reported ad (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    
+    db.delete(ad)
+    db.commit()
+    return {"detail": "Content removed"}
+
+#DATABASE_URL=sqlite:///./classifieds.db
+SECRET_KEY=your-super-secret-key-change-this-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+python-dotenv==1.0.0
+pip install -r requirements.txt
+python main.py
+ ============================================================================
+# HEALTH CHECK & ROOT ENDPOINTS
+# ============================================================================
+
+@app.get("/", tags=["Health"])
+def root():
+    """Root endpoint"""
+    return {
+        "message": "Classifieds API v1.0",
+        "docs": "/docs",
+        "status": "running"
+    }
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+# ============================================================================
+# RUN THE APP
+# ============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)DATABASE_URL=sqlite:///./classifieds.db
+SECRET_KEY=your-super-secret-key-change-this-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+python-dotenv==1.0.0
+pip install -r requirements.txt
+python main.py
