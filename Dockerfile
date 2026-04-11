@@ -1,1 +1,25 @@
-# Dockerfile for Node.js Multi-Stage Build\n\n# Stage 1: Build the application\nFROM node:16 AS builder\n\n# Set the working directory\nWORKDIR /app\n\n# Copy package.json and package-lock.json\nCOPY package*.json ./\n\n# Install dependencies\nRUN npm install\n\n# Copy the rest of the application files\nCOPY . .\n\n# Build the application\nRUN npm run build\n\n# Stage 2: Run the application\nFROM node:16 AS runtime\n\n# Set the working directory\nWORKDIR /app\n\n# Copy built assets from builder stage\nCOPY --from=builder /app .\n\n# Expose the application port\nEXPOSE 8080\n\n# Command to run the application\nCMD [ "npm", "start" ]
+# Use slim Python image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Prevent Python from writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y build-essential
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Run app with Uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
