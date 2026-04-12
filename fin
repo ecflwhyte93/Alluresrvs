@@ -1,0 +1,345 @@
+allure-platform/
+├── backend/           # FastAPI + MongoDB
+│   ├── app/
+│   │   ├── main.py              # Main application
+│   │   └── routers/
+│   │       ├── auth.py          # Login/register
+│   │       ├── verification.py  # Age verification
+│   │       ├── ads.py           # Classified ads
+│   │       ├── messages.py      # Real-time chat
+│   │       ├── safety.py        # Safety features
+│   │       └── admin.py         # Moderation tools
+│   └── requirements.txt
+├── frontend/          # React + Material-UI
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── LandingPage.js   # Hero with fire logo
+│   │   │   ├── Browse.js        # Grid feed
+│   │   │   ├── AdDetail.js      # Profile view
+│   │   │   ├── Verification.js  # Age verification
+│   │   │   ├── Messages.js      # Chat interface
+│   │   │   └── AdminDashboard.js
+│   │   ├── components/
+│   │   │   ├── Navigation.js    # Bottom nav with FAB
+│   │   │   └── SafetyBanner.js
+│   │   └── theme.js             # ALLURE color scheme
+│   └── package.json
+└── SETUP_GUIDE.md     # Complete setup instructions
+the code into a single comprehensive document for you:
+Action: file_editor create /app/COMPLETE_CODE_COMPILATION.md --file-text "# Classifieds Marketplace Platform - Complete Code Compilation
+
+## Table of Contents
+1. [Backend Code](#backend-code)
+2. [Frontend Components](#frontend-components)
+3. [Configuration Files](#configuration-files)
+4. [Setup Instructions](#setup-instructions)
+
+---
+
+## Backend Code
+
+### `/app/backend/server.py`
+
+```python
+# ============================================================================
+# PRODUCTION CLASSIFIEDS API (MONGODB + STRIPE + CLOUDINARY + WEBSOCKET)
+# ============================================================================
+
+import os
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List, Dict
+from pathlib import Path
+
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Header
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
+from fastapi.security.http import HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, Field
+from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from dotenv import load_dotenv
+import cloudinary
+import cloudinary.utils
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutSessionRequest
+
+# ============================================================================
+# ENV CONFIG
+# ============================================================================
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+MONGO_URL = os.getenv(\"MONGO_URL\")
+DB_NAME = os.getenv(\"DB_NAME\")
+SECRET_KEY = os.getenv(\"SECRET_KEY\")
+STRIPE_API_KEY = os.getenv(\"STRIPE_API_KEY\")
+ALGORITHM = \"HS256\"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+# Cloudinary config (optional)
+if os.getenv(\"CLOUDINARY_CLOUD_NAME\"):
+    cloudinary.config(
+        cloud_name=os.getenv(\"CLOUDINARY_CLOUD_NAME\"),
+        api_key=os.getenv(\"CLOUDINARY_API_KEY\"),
+        api_secret=os.getenv(\"CLOUDINARY_API_SECRET\"),
+        secure=True
+    )
+
+# ============================================================================
+# DATABASE
+# ============================================================================
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+# Collections
+users_collection = db.users
+ads_collection = db.ads
+messages_collection = db.messages
+subscriptions_collection = db.subscriptions
+payment_transactions_collection = db.payment_transactions
+
+# ============================================================================
+# MODELS
+# ============================================================================
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: str
+    password: str
+
+class UserLoginfile_editor create /app/COMPLETE_CODE_COMPILATION.md --file-text "# Classifieds Marketplace Platform - Complete Code Compilation
+
+## Table of Contents
+1. [Backend Code](#backend-code)
+2. [Frontend Components](#frontend-components)
+3. [Configuration Files](#configuration-files)
+4. [Setup Instructions](#setup-instructions)
+
+---
+
+## Backend Code
+
+### `/app/backend/server.py`
+
+```python
+# ============================================================================
+# PRODUCTION CLASSIFIEDS API (MONGODB + STRIPE + CLOUDINARY + WEBSOCKET)
+# ============================================================================
+
+import os
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List, Dict
+from pathlib import Path
+
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Header
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
+from fastapi.security.http import HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, Field
+from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from dotenv import load_dotenv
+import cloudinary
+import cloudinary.utils
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutSessionRequest
+
+# ============================================================================
+# ENV CONFIG
+# ============================================================================
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+MONGO_URL = os.getenv(\"MONGO_URL\")
+DB_NAME = os.getenv(\"DB_NAME\")
+SECRET_KEY = os.getenv(\"SECRET_KEY\")
+STRIPE_API_KEY = os.getenv(\"STRIPE_API_KEY\")
+ALGORITHM = \"HS256\"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+# Cloudinary config (optional)
+if os.getenv(\"CLOUDINARY_CLOUD_NAME\"):
+    cloudinary.config(
+        cloud_name=os.getenv(\"CLOUDINARY_CLOUD_NAME\"),
+        api_key=os.getenv(\"CLOUDINARY_API_KEY\"),
+        api_secret=os.getenv(\"CLOUDINARY_API_SECRET\"),
+        secure=True
+    )
+
+# ============================================================================
+# DATABASE
+# ============================================================================
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+# Collections
+users_collection = db.users
+ads_collection = db.ads
+messages_collection = db.messages
+subscriptions_collection = db.subscriptions
+payment_transactions_collection = db.payment_transactions
+
+# ============================================================================
+# MODELS
+# ============================================================================
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class AdCreate(BaseModel):
+    headline: str
+    description: Optional[str] = None
+    category: str
+    location: str
+    display_name: str
+    photos: List[str] = []
+    tags: List[str] = []
+
+class MessageCreate(BaseModel):
+    content: str
+    to_email: str
+    ad_id: Optional[int] = None
+
+class CheckoutRequest(BaseModel):
+    package_id: str
+    origin_url: str
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+
+pwd_context = CryptContext(schemes=[\"bcrypt\"], deprecated=\"auto\")
+security = HTTPBearer()
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({\"exp\": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get(\"sub\")
+        if email is None:
+            raise HTTPException(status_code=401, detail=\"Invalid authentication credentials\")
+    except JWTError:
+        raise HTTPException(status_code=401, detail=\"Invalid authentication credentials\")
+    
+    user = await users_collection.find_one({\"email\": email})
+    if user is None:
+        raise HTTPException(status_code=401, detail=\"User not found\")
+    return user
+
+async def get_current_admin(current_user = Depends(get_current_user)):
+    if current_user.get(\"role\") != \"admin\":
+        raise HTTPException(status_code=403, detail=\"Admin access required\")
+    return current_user
+
+# ============================================================================
+# APP
+# ============================================================================
+
+app = FastAPI(title=\"Classifieds API\")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv(\"CORS_ORIGINS\", \"*\").split(\",\"),
+    allow_credentials=True,
+    allow_methods=[\"*\"],
+    allow_headers=[\"*\"],
+)
+
+# ============================================================================
+# AUTH ENDPOINTS
+# ============================================================================
+
+@app.post(\"/api/auth/register\", response_model=Token)
+async def register(data: UserCreate):
+    # Check if user exists
+    existing_user = await users_collection.find_one({\"email\": data.email})
+    if existing_user:
+        raise HTTPException(status_code=400, detail=\"Email already registered\")
+    
+    existing_username = await users_collection.find_one({\"username\": data.username})
+    if existing_username:
+        raise HTTPException(status_code=400, detail=\"Username already taken\")
+    
+    # Create user
+    user_dict = {
+        \"email\": data.email,
+        \"username\": data.username,
+        \"full_name\": data.full_name,
+        \"password_hash\": hash_password(data.password),
+        \"role\": \"user\",
+        \"is_vip\": False,
+        \"created_at\": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await users_collection.insert_one(user_dict)
+    
+    # Create token
+    access_token = create_access_token(data={\"sub\": data.email})
+    return {\"access_token\": access_token, \"token_type\": \"bearer\"}
+
+@app.post(\"/api/auth/login\", response_model=Token)
+async def login(data: UserLogin):
+    user = await users_collection.find_one({\"email\": data.email})
+    if not user or not verify_password(data.password, user[\"password_hash\"]):
+        raise HTTPException(status_code=401, detail=\"Invalid email or password\")
+    
+    access_token = create_access_token(data={\"sub\": user[\"email\"]})
+    return {\"access_token\": access_token, \"token_type\": \"bearer\"}
+
+@app.get(\"/api/auth/me\")
+async def get_me(current_user = Depends(get_current_user)):
+    return {
+        \"email\": current_user[\"email\"],
+        \"username\": current_user[\"username\"],
+        \"full_name\": current_user[\"full_name\"],
+        \"role\": current_user[\"role\"],
+        \"is_vip\": current_user.get(\"is_vip\", False)
+    }
+
+# ============================================================================
+# ADS ENDPOINTS
+# ============================================================================
+
+@app.post(\"/api/ads\")
+async def create_ad(ad: AdCreate, current_user = Depends(get_current_user)):
+    # Auto moderation
+    banned_words = [\"scam\", \"fake\", \"fraud\", \"illegal\"]
+    flagged = any(word in ad.headline.lower() or word in (ad.description or \"\").lower() for word in banned_words)
+    
+    # Get next ad ID
+    last_ad = await ads_collection.find_one(sort=[(\"id\", -1)])
+    next_id = (last_ad[\"id\"] + 1) if last_ad else 1
+    
+    ad_dict = {
+        \"id\": next_id,
+        \"headli
