@@ -1,0 +1,35 @@
+"use client"
+
+import { useCallback } from "react"
+import {
+  EmbeddedCheckout,
+  EmbeddedCheckoutProvider,
+} from "@stripe/react-stripe-js"
+import { loadStripe } from "@stripe/stripe-js"
+import { startEmbeddedCheckout } from "@/app/actions/stripe"
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+)
+
+interface CheckoutProps {
+  productId: string
+}
+
+export default function Checkout({ productId }: CheckoutProps) {
+  const fetchClientSecret = useCallback(
+    () => startEmbeddedCheckout(productId),
+    [productId]
+  )
+
+  return (
+    <div id="checkout" className="w-full">
+      <EmbeddedCheckoutProvider
+        stripe={stripePromise}
+        options={{ fetchClientSecret }}
+      >
+        <EmbeddedCheckout />
+      </EmbeddedCheckoutProvider>
+    </div>
+  )
+}
