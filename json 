@@ -1,0 +1,46 @@
+---
+ package.json      | 28 ++++++++++++++++++++++++++++
+ next.config.mjs   |  8 ++++++++
+ 2 files changed, 36 insertions(+)
+
+diff --git a/package.json b/package.json
+index 0000000..1111111 100644
+--- a/package.json
++++ b/package.json
+@@ -1,0 +1,28 @@
++{
++  "name": "v0-classifieds-marketplace-platform",
++  "version": "1.0.0",
++  "private": true,
++  "scripts": {
++    "dev": "next dev",
++    "build": "next build",
++    "start": "next start",
++    "lint": "next lint"
++  },
++  "dependencies": {
++    "next": "14.2.3",
++    "react": "18.3.1",
++    "react-dom": "18.3.1"
++  },
++  "devDependencies": {
++    "eslint": "^9.0.0",
++    "eslint-config-next": "14.2.3",
++    "typescript": "^5.6.0"
++  }
++}
+\ No newline at end of file
+
+diff --git a/next.config.mjs b/next.config.mjs
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/next.config.mjs
+@@ -0,0 +1,8 @@
++/** @type {import('next').NextConfig} */
++const nextConfig = {
++  reactStrictMode: true
++};
++
++export default nextConfig;
++
