@@ -9,9 +9,7 @@
     "lint": "eslint"
   }
       "dependencies": {
-    // ... other deps
     "next": "16.2.0",
-    // ... rest
       }
     "@hookform/resolvers": "^3.9.1",
     "@vercel/analytics": "1.6.1",
